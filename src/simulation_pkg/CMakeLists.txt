@@ -35,6 +35,7 @@ install(DIRECTORY launch worlds models
 # Install Python scripts
 install(PROGRAMS
   scripts/patrol_node.py
+  scripts/planner_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

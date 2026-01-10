@@ -10,25 +10,25 @@ poster_board/
 ├── model.sdf            # Model tanımı (mavi çerçeve + poster)
 └── materials/
     └── textures/
-        └── poster.png   # POSTER RESMİNİZİ BURAYA KOYUN
+        └── poster.jpeg   # POSTER RESMİNİZİ BURAYA KOYUN
 ```
 
 ## 🖼️ Poster Ekleme
 
 ### Yöntem 1: Mevcut Posteri Değiştirme
-Kendi poster görselinizi bu klasöre `poster.png` adıyla kopyalayın:
+Kendi poster görselinizi bu klasöre `poster.jpeg` adıyla kopyalayın:
 
 ```bash
-cp /yol/to/poster_resminiz.png ~/itu_robotics_ws/itu_project_ws/src/simulation_pkg/models/poster_board/materials/textures/poster.png
+cp /yol/to/poster_resminiz.jpg ~/itu_robotics_ws/itu_project_ws/src/simulation_pkg/models/poster_board/materials/textures/poster.jpeg
 ```
 
 ### Yöntem 2: Direkt Kopyalama
 ```bash
 cd ~/itu_robotics_ws/itu_project_ws/src/simulation_pkg/models/poster_board/materials/textures/
 # Eski posteri yedekle (opsiyonel)
-mv poster.png poster_backup.png
+mv poster.jpeg poster_backup.jpeg
 # Yeni posteri kopyala
-cp /path/to/your/poster.png ./poster.png
+cp /path/to/your/poster.jpg ./poster.jpeg
 ```
 
 ## 📐 Önerilen Poster Özellikleri
@@ -68,7 +68,7 @@ Poster'da şunlar olabilir:
 
 ## ⚠️ Önemli Notlar
 
-1. **Dosya adı**: Mutlaka `poster.png` olmalı
+1. **Dosya adı**: Mutlaka `poster.jpeg` olmalı
 2. **Konum**: Bu klasörde (`materials/textures/`) olmalı
 3. **Format**: PNG, JPG veya JPEG desteklenir (PNG önerilir)
 4. **Symlink**: Build sonrası `install/` klasörüne otomatik kopyalanır
@@ -79,7 +79,7 @@ Poster'ın doğru yüklendiğini kontrol etmek için:
 
 ```bash
 # Dosyanın varlığını kontrol et
-ls -lh ~/itu_robotics_ws/itu_project_ws/src/simulation_pkg/models/poster_board/materials/textures/poster.png
+ls -lh ~/itu_robotics_ws/itu_project_ws/src/simulation_pkg/models/poster_board/materials/textures/poster.jpeg
 
 # Simülasyonda görüntüle
 ros2 launch simulation_pkg simulation.launch.py

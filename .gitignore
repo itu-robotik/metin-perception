@@ -32,3 +32,4 @@ Thumbs.db
 
 # Gazebo Generated
 *.sdf.erb
+secrets.env

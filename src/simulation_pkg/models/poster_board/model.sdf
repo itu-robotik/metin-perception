@@ -29,7 +29,7 @@
           <diffuse>1 1 1 1</diffuse>
           <pbr>
             <metal>
-              <albedo_map>materials/textures/poster.png</albedo_map>
+              <albedo_map>materials/textures/poster.jpeg</albedo_map>
             </metal>
           </pbr>
         </material>

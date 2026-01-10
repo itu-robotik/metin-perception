@@ -33,7 +33,23 @@
     <include>
       <uri>model://poster_board</uri>
       <name>noticeboard_1</name>
-      <pose>3 -1.85 1.25 0 0 1.57</pose>
+      <!-- Duvarin dibine: y=-2, poster kalinigi ~0.1, bu yuzden -1.9 -->
+      <!-- Donuk: 1.57 (90 derece, sola bakiyor, yani -Y duvarindan +Y tarafina bakiyor) -->
+      <pose>3 -1.9 1.25 0 0 1.57</pose>
+    </include>
+
+    <include>
+      <uri>model://poster_board</uri>
+      <name>noticeboard_2</name>
+      <!-- Karsi duvar: y=2, donuk -1.57 (270 veya -90 derece, saga bakiyor) -->
+      <pose>6 1.9 1.25 0 0 -1.57</pose>
+    </include>
+
+    <include>
+      <uri>model://poster_board</uri>
+      <name>noticeboard_3</name>
+      <!-- Tekrar sol duvar: y=-2 -->
+      <pose>9 -1.9 1.25 0 0 1.57</pose>
     </include>
     
 
