@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_share = get_package_share_directory('simulation_pkg')
     # World File
-    world_file = os.path.join(pkg_share, 'worlds', 'cafeteria.sdf')
+    world_file = os.path.join(pkg_share, 'worlds', 'challenging_cafeteria.sdf')
     robot_file = os.path.join(pkg_share, 'models', 'my_robot', 'model.sdf')
     models_path = os.path.join(pkg_share, 'models')
     

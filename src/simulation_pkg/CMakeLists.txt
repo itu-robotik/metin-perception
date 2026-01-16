@@ -28,7 +28,7 @@ if(BUILD_TESTING)
 endif()
 
 # Install directories
-install(DIRECTORY launch worlds models
+install(DIRECTORY launch worlds models rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -36,6 +36,7 @@ install(DIRECTORY launch worlds models
 install(PROGRAMS
   scripts/patrol_node.py
   scripts/planner_node.py
+  scripts/camera_monitor.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

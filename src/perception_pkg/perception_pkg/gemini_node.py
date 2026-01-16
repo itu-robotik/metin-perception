@@ -5,6 +5,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String, Float32MultiArray
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import qos_profile_sensor_data
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
@@ -27,7 +28,8 @@ class PerceptionNode(Node):
         self.cb_group = ReentrantCallbackGroup()
 
         # Abonelikler ve Yayımcılar
-        self.subscription = self.create_subscription(Image, '/camera', self.img_cb, 10, callback_group=self.cb_group)
+        # Use qos_profile_sensor_data for Best Effort compatibility with Gazebo
+        self.subscription = self.create_subscription(Image, '/camera', self.img_cb, qos_profile_sensor_data, callback_group=self.cb_group)
         self.detect_pub = self.create_publisher(Float32MultiArray, '/perception/board_status', 10, callback_group=self.cb_group)
         self.analysis_pub = self.create_publisher(String, '/perception/poster_analysis', 10, callback_group=self.cb_group)
         self.debug_pub = self.create_publisher(Image, '/perception/debug_image', 10, callback_group=self.cb_group)
@@ -395,13 +397,28 @@ def main(args=None):
     
     # Ana thread sadece GUI guncellesin
     print("🖥️  GUI Ana Thread'de başlatıldı...")
+    
+    # Pencereyi hemen oluştur
+    window_name = "Robot Gozu (Perception)"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(window_name, 640, 480)
+    
     try:
         while rclpy.ok():
+            current_img = None
             with node.lock:
                 if node.visual_img is not None:
-                    cv2.imshow("Robot Gozu (Perception)", node.visual_img)
+                    current_img = node.visual_img.copy()
             
-            key = cv2.waitKey(20) # 20ms bekle (50fps)
+            if current_img is not None:
+                cv2.imshow(window_name, current_img)
+            else:
+                # Goruntu yoksa bekleme ekrani
+                blank_img = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(blank_img, "Kamera Bekleniyor...", (150, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.imshow(window_name, blank_img)
+            
+            key = cv2.waitKey(1) # 1ms bekle
             if key == ord('q'):
                 break
                 

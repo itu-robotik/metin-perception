@@ -17,15 +17,15 @@ class PlannerNode(Node):
         self.memory = self.load_memory()
         
         # 2. Pano Koordinatlari (Gazebo'daki Konumlar)
-        # noticeboard_1: x=3, y=-1.9, theta=1.57 (90 deg - Y'ye bakiyor) -> Robot onunde durmak icin y biraz az almali
-        # noticeboard_2: x=6, y=1.9, theta=-1.57 (-90 deg - -Y'ye bakiyor) 
-        # noticeboard_3: x=9, y=-1.9, theta=1.57
-        
-        # Robotun duracagi noktalar (Pano merkezinden 1m geride)
+        # Posters are at y = -9.6, facing +Y (1.57).
+        # Robot should be at y = -8.0, facing -Y (-1.57) to see them.
         self.board_locations = {
-            "1": {"x": -2.0, "y": 4.5, "theta": 1.57}, # Pano (-2, 5.74), Robot (-2, 4.5), +90 derece donuk (+Y'ye bakiyor)
-            "2": {"x":  2.0, "y": 4.5, "theta": 1.57}, # Pano (2, 5.74), Robot (2, 4.5)
-            "3": {"x":  6.0, "y": 4.5, "theta": 1.57}  # Pano (6, 5.74), Robot (6, 4.5)
+            "1": {"x": -10.0, "y": -8.0, "theta": -1.57},
+            "2": {"x":  -7.0, "y": -8.0, "theta": -1.57},
+            "3": {"x":  -1.0, "y": -8.0, "theta": -1.57},
+            "4": {"x":   2.0, "y": -8.0, "theta": -1.57},
+            "5": {"x":   9.0, "y": -8.0, "theta": -1.57},
+            "6": {"x":  12.0, "y": -8.0, "theta": -1.57}
         }
         
         # 3. Yayin ve Abonelikler
@@ -40,22 +40,34 @@ class PlannerNode(Node):
         self.plan_timer = self.create_timer(5.0, self.planning_loop)
         
         self.get_logger().info("🧠 Planner Node (MEMORY SYSTEM) Başlatıldı!")
-        self.get_logger().info(f"📂 Hafiza Dosyasi: {self.memory_file}")
+        self.get_logger().info(f"📂 Hafıza Dosyası: {self.memory_file}")
 
     def load_memory(self):
         if os.path.exists(self.memory_file):
             try:
                 with open(self.memory_file, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Migrate old memory to new 6-board system if needed
+                    if len(data.get("boards", {})) < 6:
+                        self.get_logger().warn("⚠️ Eski hafıza yapısı tespit edildi (3 pano), 6 pano için genişletiliyor...")
+                        # Add missing boards
+                        for i in range(1, 7):
+                            bid = str(i)
+                            if bid not in data["boards"]:
+                                data["boards"][bid] = {"id": i, "status": "unknown", "last_visit": 0, "visit_count": 0}
+                    return data
             except:
                 self.get_logger().warn("⚠️ Hafıza dosyası bozuk, yenisi oluşturuluyor.")
         
-        # Varsayılan Yapı
+        # Varsayılan Yapı (6 Pano)
         return {
             "boards": {
                 "1": {"id": 1, "status": "unknown", "last_visit": 0, "visit_count": 0},
                 "2": {"id": 2, "status": "unknown", "last_visit": 0, "visit_count": 0},
-                "3": {"id": 3, "status": "unknown", "last_visit": 0, "visit_count": 0}
+                "3": {"id": 3, "status": "unknown", "last_visit": 0, "visit_count": 0},
+                "4": {"id": 4, "status": "unknown", "last_visit": 0, "visit_count": 0},
+                "5": {"id": 5, "status": "unknown", "last_visit": 0, "visit_count": 0},
+                "6": {"id": 6, "status": "unknown", "last_visit": 0, "visit_count": 0}
             },
             "history": []
         }
