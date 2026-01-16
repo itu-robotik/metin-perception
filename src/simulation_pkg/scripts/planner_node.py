@@ -23,9 +23,9 @@ class PlannerNode(Node):
         
         # Robotun duracagi noktalar (Pano merkezinden 1m geride)
         self.board_locations = {
-            "1": {"x": 3.0, "y": -1.0, "theta": -1.57}, # Pano (3, -1.9), Robot (3, -1.0), -90 derece donuk
-            "2": {"x": 6.0, "y": 1.0, "theta": 1.57},   # Pano (6, 1.9), Robot (6, 1.0), 90 derece donuk
-            "3": {"x": 9.0, "y": -1.0, "theta": -1.57}  # Pano (9, -1.9), Robot (9, -1.0), -90 derece donuk
+            "1": {"x": -2.0, "y": 4.5, "theta": 1.57}, # Pano (-2, 5.74), Robot (-2, 4.5), +90 derece donuk (+Y'ye bakiyor)
+            "2": {"x":  2.0, "y": 4.5, "theta": 1.57}, # Pano (2, 5.74), Robot (2, 4.5)
+            "3": {"x":  6.0, "y": 4.5, "theta": 1.57}  # Pano (6, 5.74), Robot (6, 4.5)
         }
         
         # 3. Yayin ve Abonelikler
@@ -69,7 +69,13 @@ class PlannerNode(Node):
         self.get_logger().info(f"📨 Analiz Verisi Alındı: {msg.data[:50]}...")
         try:
             data = json.loads(msg.data)
-            board_id = str(data.get("board_id", self.current_target_id))
+            board_id = str(data.get("board_id"))
+            
+            # Eger algilanan ID hafizada yoksa (Orn: ArUco 0 ama Pano 1'e gittik)
+            # Mevcut hedefi kabul et
+            if board_id not in self.memory["boards"] and self.current_target_id:
+                self.get_logger().warn(f"⚠️ Algılanan ID ({board_id}) bilinmiyor, Hedef ID ({self.current_target_id}) kullanılıyor.")
+                board_id = str(self.current_target_id)
             
             if board_id in self.memory["boards"]:
                 board = self.memory["boards"][board_id]
@@ -124,35 +130,41 @@ class PlannerNode(Node):
         now = time.time()
         
         # Gezilecek adaylari belirle
-        candidates = []
+        unvisited_candidates = []
+        revisit_candidates = []
         
         for bid, info in self.memory["boards"].items():
             # Ziyaret edilmemis veya status sorunlu olanlar
             # Ayrica sure kontrolu (60sn)
-            should_visit = False
             
             if info["visit_count"] == 0:
                 # Hic gitmemisiz. Ama yakin zamanda denedik mi?
-                if (now - info.get("last_attempt", 0)) > 30: # 30 saniye bekleme suresi (basarisiz deneme sonrasi)
-                     should_visit = True
+                if (now - info.get("last_attempt", 0)) > 30: 
+                     if bid in self.board_locations:
+                        loc = self.board_locations[bid]
+                        dist = math.sqrt((loc["x"] - current_x)**2 + (loc["y"] - current_y)**2)
+                        unvisited_candidates.append((dist, bid))
+
             elif info["status"] in ["expired", "unclear", "unknown"]:
                 if (now - info["last_visit"]) > 60:
-                    should_visit = True
-            
-            if should_visit:
-                # Mesafeyi hesapla
-                if bid in self.board_locations:
-                    loc = self.board_locations[bid]
-                    dist = math.sqrt((loc["x"] - current_x)**2 + (loc["y"] - current_y)**2)
-                    candidates.append((dist, bid))
+                    if bid in self.board_locations:
+                        loc = self.board_locations[bid]
+                        dist = math.sqrt((loc["x"] - current_x)**2 + (loc["y"] - current_y)**2)
+                        revisit_candidates.append((dist, bid))
         
-        # En yakini sec
-        if candidates:
-            # Mesafeye gore sirala (kucukten buyuge)
-            candidates.sort(key=lambda x: x[0])
-            target_id = candidates[0][1]
-            dist_to_target = candidates[0][0]
-            self.get_logger().info(f"📍 En Yakın Hedef Seçildi: Pano {target_id} (Mesafe: {dist_to_target:.2f}m)")
+        # ONCELIK: Ziyaret edilmemisler
+        if unvisited_candidates:
+            unvisited_candidates.sort(key=lambda x: x[0])
+            target_id = unvisited_candidates[0][1]
+            dist_to_target = unvisited_candidates[0][0]
+            self.get_logger().info(f"📍 Yeni Hedef (Ziyaret Edilmemiş): Pano {target_id} (Mesafe: {dist_to_target:.2f}m)")
+            
+        # Eger hepsi ziyaret edildiyse, tekrar kontrol edilmesi gerekenlere bak
+        elif revisit_candidates:
+            revisit_candidates.sort(key=lambda x: x[0])
+            target_id = revisit_candidates[0][1]
+            dist_to_target = revisit_candidates[0][0]
+            self.get_logger().info(f"📍 Yeni Hedef (Tekrar Kontrol): Pano {target_id} (Mesafe: {dist_to_target:.2f}m)")
         
         # Eger aday yoksa, belki hepsi 'ok' durumdadir. 
         # Yine de en eski ziyaret edilene bakalim (devriye niyetiyle)
@@ -172,6 +184,21 @@ class PlannerNode(Node):
              
              if found_candidate:
                 self.get_logger().info(f"🔄 Devriye: Her şey yolunda, en eski Pano {target_id} kontrol ediliyor.")
+
+        # Eger hala aday yoksa ve tum panolar kontrol edildiyse
+        # Veya tum panolarin statusu 'ok' ise ve sureleri dolmadiysa
+        if target_id is None:
+             # Kontrol edelim: Hepsi ziyaret edildi mi?
+             all_visited = True
+             for bid, info in self.memory["boards"].items():
+                 if info["visit_count"] == 0:
+                     all_visited = False
+                     break
+             
+             if all_visited:
+                 self.get_logger().info("🎉 GÖREV TAMAMLANDI: Tüm panolar kontrol edildi. Devriye bitiyor.")
+                 # IDLE durumuna gec ve hedef gonderme
+                 return
 
         if target_id:
             # Hedef gondermeden once last_attempt guncelle

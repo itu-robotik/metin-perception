@@ -18,7 +18,7 @@ def euler_from_quaternion(x, y, z, w):
     
 class PatrolNode(Node):
     def __init__(self):
-        super().__init__('patrol_node')
+        super().__init__('patrol_node') 
         self.lidar_sub = self.create_subscription(LaserScan, '/scan', self.lidar_callback, 10)
         self.vision_sub = self.create_subscription(Float32MultiArray, '/perception/board_status', self.vision_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
@@ -58,12 +58,23 @@ class PatrolNode(Node):
         # Durum bildirimi icin ekstra timer
         self.status_timer = self.create_timer(1.0, self.publish_status)
         
+        # Re-docking Prevention
+        self.last_analysis_pos_x = -999.0
+        self.last_analysis_pos_y = -999.0
+        
+        # Navigation Hysteresis
+        self.turning_in_place = False
+        
         self.get_logger().info("🤖 Otonom Devriye v10.0 (PLANNER INTEGRATED) Hazir!")
 
     def analysis_done_callback(self, msg):
         self.get_logger().info("✅ Analiz Tamamlandı Mesajı Alındı. Durum IDLE yapılıyor.")
         self.state = "IDLE"
-        self.target_locked = False # Yeni hedef arayabilir artik vizyon
+        self.target_locked = False 
+        
+        # Son analiz yapilan pozisyonu kaydet (Re-docking engellemek icin)
+        self.last_analysis_pos_x = self.robot_x
+        self.last_analysis_pos_y = self.robot_y
         
     def publish_status(self):
         self.status_pub.publish(String(data=self.state))
@@ -95,30 +106,69 @@ class PatrolNode(Node):
         self.state = "TRAVELING"
         self.get_logger().info(f"📨 Yeni Hedef Alındı: [{self.global_goal_x:.2f}, {self.global_goal_y:.2f}]")
 
+    # Kamerasel ve Poster Sabitleri (Varsayilan A1 Pano: 59.4cm x 84.1cm)
+    POSTER_WIDTH = 0.60 
+    POSTER_HEIGHT = 0.85
+    CAMERA_FX = 554.25
+    CAMERA_CX = 320.0
+    FRAME_WIDTH = 640
+    FRAME_HEIGHT = 480
+    
+    def calculate_optimal_distance(self):
+        # Yatay FOV (Radyan)
+        # tan(fov_h / 2) = (W/2) / fx
+        fov_h_half = math.atan((self.FRAME_WIDTH / 2.0) / self.CAMERA_FX)
+        
+        # Dikey FOV (Radyan) - Kare piksel varsayimi ile fx=fy
+        fov_v_half = math.atan((self.FRAME_HEIGHT / 2.0) / self.CAMERA_FX)
+        
+        # Yatayda sigmasi icin gereken mesafe
+        # distance = (ObjectSize / 2) / tan(fov / 2)
+        dist_h = (self.POSTER_WIDTH / 2.0) / math.tan(fov_h_half)
+        
+        # Dikeyde sigmasi icin gereken mesafe
+        dist_v = (self.POSTER_HEIGHT / 2.0) / math.tan(fov_v_half)
+        
+        # Hangisi daha buyukse onu al ki ikisi de sigsin
+        optimal_dist = max(dist_h, dist_v)
+        
+        # Biraz marj payi (Orn: %10 daha geride dur)
+        optimal_dist *= 1.1
+        
+        return optimal_dist
+
     def vision_callback(self, msg): 
         # Sadece TRAVELING bitip docking asamasina gectigimizde vizyonu kullanalim
         # VEYA TRAVELING sirasinda hedef panoya yaklastigimizda
-        if self.state not in ["TRAVELING", "SCANNING"]: 
+        # VEYA NAVIGATE_TO_DOCK modundaysak surekli guncelleyelim
+        if self.state not in ["TRAVELING", "SCANNING", "NAVIGATE_TO_DOCK"]: 
             return 
             
-        # Hedef panoya yakin miyiz? (3m menzil)
-        # IPTAL: Robot gordugu an kilitlensin, odometri hatasi yuzunden kacirmasin.
-        # if self.has_global_goal:
-        #     dist_to_goal = math.sqrt((self.global_goal_x - self.robot_x)**2 + (self.global_goal_y - self.robot_y)**2)
-        #     if dist_to_goal > 3.0: 
-        #         return # Henuz uzagiz, vizyonu dikkate alma
-
-        if self.target_locked: return 
+        if self.target_locked and self.state == "TRAVELING": return 
         
-        if len(msg.data) >= 5: 
+        # COOLDOWN KONTROLU (Eger NAVIGATE_TO_DOCK degilsek)
+        if self.state != "NAVIGATE_TO_DOCK":
+            dist_from_last = math.sqrt((self.robot_x - self.last_analysis_pos_x)**2 + (self.robot_y - self.last_analysis_pos_y)**2)
+            if dist_from_last < 2.0:
+                return
+
+        if len(msg.data) >= 7: 
             found = (msg.data[0] > 0.5)
-            if found and self.odom_received:
+            # data indices: [found, cx, distance, yaw_err, marker_yaw, poster_cx_offset, poster_width_px]
+            
+            if found:
                 self.board_found = True
                 dist = msg.data[2]
+                self.latest_visual_dist = dist # Save for control loop
                 yaw_err = msg.data[3]
                 marker_yaw = msg.data[4]
+                self.visual_cx_offset = msg.data[5] # -1.0 to 1.0
+                self.visual_poster_width = msg.data[6]
                 
-                if dist < 4.0: 
+                # --- STATE TRANSITION TO DOCKING ---
+                # Eger henuz docking modunda degilsek ve pano yakinimizdaysa
+                if self.state in ["TRAVELING", "SCANNING"] and dist < 4.0:
+                    # ArUco ile kaba yaklasma konumu hesapla (Transition icin)
                     global_angle_to_poster = self.robot_yaw - yaw_err
                     px = self.robot_x + (dist * math.cos(global_angle_to_poster))
                     py = self.robot_y + (dist * math.sin(global_angle_to_poster))
@@ -126,84 +176,74 @@ class PatrolNode(Node):
                     self.poster_x = px
                     self.poster_y = py
                     
-                    # DOCKING HESABI - DÜZELTİLDİ
-                    poster_normal_angle = self.robot_yaw - marker_yaw
-                    self.dock_x = px + (0.75 * math.cos(poster_normal_angle))
-                    self.dock_y = py + (0.75 * math.sin(poster_normal_angle))
-                    
+                    # Lock Target
                     self.target_locked = True
-                    self.state = "NAVIGATE_TO_DOCK" # Hemen dockinga gec
-                    self.get_logger().info(f"📍 PANO BULUNDU! Docking basliyor... Dist: {dist:.2f}m")
+                    self.state = "NAVIGATE_TO_DOCK"
+                    self.get_logger().info("📍 GÖRSEL KİLİTLENME! Visual Servoing Moduna Geçiliyor...")
 
     def stop_robot(self):
         twist = Twist()
         self.cmd_pub.publish(twist)
 
-    def navigate_to(self, tx, ty, final_yaw=None, tolerance=0.5):
+    def navigate_to(self, tx, ty, final_yaw=None, tolerance=0.1): 
+        # Standart navigasyon (TRAVELING vb icin kalsin)
+        # ... (Bu fonksiyon degismiyor, kodun geri kalaninda kullanilabilir)
+        # ANCAK VISUAL SERVOING ICIN YENI MANTIK ASAGIDA CONTROL_LOOP ICINDE
+        
+        # Kod tekrari olmamasi icin burayi oldugu gibi birakiyoruz
+        # Ama NAVIGATE_TO_DOCK artik burayi kullanmayacak.
+        return self._navigate_impl(tx, ty, final_yaw, tolerance)
+
+    def _navigate_impl(self, tx, ty, final_yaw, tolerance):
+        # Eski navigate_to mantiginin kopyasi (Helper)
         twist = Twist()
         dx = tx - self.robot_x
         dy = ty - self.robot_y
         dist = math.sqrt(dx*dx + dy*dy)
         target_angle = math.atan2(dy, dx)
         angle_diff = target_angle - self.robot_yaw
-        
-        # Aci normalizasyonu
         while angle_diff > math.pi: angle_diff -= 2*math.pi
         while angle_diff < -math.pi: angle_diff += 2*math.pi
         
         if dist < tolerance:
-            # Hedefe vardik
+            if final_yaw is not None:
+                yaw_diff = final_yaw - self.robot_yaw
+                while yaw_diff > math.pi: yaw_diff -= 2*math.pi
+                while yaw_diff < -math.pi: yaw_diff += 2*math.pi
+                if abs(yaw_diff) < 0.1: return True, twist
+                else:
+                    twist.angular.z = 0.3 if yaw_diff > 0 else -0.3
+                    return False, twist
             return True, twist
+            
+        turn_start_threshold = 0.5
+        turn_stop_threshold = 0.2
         
-        # Basit P-Kontrol
-        if abs(angle_diff) > 0.4:
-            twist.linear.x = 0.0
-            twist.angular.z = 0.6 if angle_diff > 0 else -0.6
+        if not self.turning_in_place:
+            if abs(angle_diff) > turn_start_threshold: self.turning_in_place = True
         else:
-            # Engel Kontrolu (Lidar)
-            safe_to_move = True
-            if hasattr(self, 'scan_info') and self.lidar_ranges:
-                rel_angle = angle_diff 
-                scan_min = self.scan_info['min']
-                scan_inc = self.scan_info['inc']
-                
-                # Indexi bul
-                center_idx = int((rel_angle - scan_min) / scan_inc)
-                num_readings = len(self.lidar_ranges)
-                
-                # 20 derecelik yarim koni (toplam 40 derece)
-                margin_steps = int(math.radians(20) / scan_inc)
-                
-                min_obs_dist = 10.0
-                
-                # Koni icindeki degerleri kontrol et
-                # Modulo kullanarak array sonundan basina gecisleri yonet
-                indices_to_check = []
-                for i in range(center_idx - margin_steps, center_idx + margin_steps + 1):
-                    indices_to_check.append(i % num_readings)
-                    
-                valid_readings = []
-                for idx in indices_to_check:
-                    r = self.lidar_ranges[idx]
-                    # 0.2m'den yakinlari (robot kendisi/gurultu) ve cok uzaklari (inf) ele
-                    # Ayrica 0.0 degeri de gecersizdir
-                    if r > 0.2 and r < 10.0:
-                        valid_readings.append(r)
-                
-                if valid_readings:
-                    min_obs_dist = min(valid_readings)
-                
-                # Eger en yakin engel 0.45m'den yakinsa dur (Robotun onu)
-                if min_obs_dist < 0.45:
-                    safe_to_move = False
-                    self.get_logger().warn(f"� Engel: {min_obs_dist:.2f}m. Duruluyor.", throttle_duration_sec=1.0)
-
-            if safe_to_move:
-                twist.linear.x = 0.4
-            else:
-                twist.linear.x = 0.0
-                
-            twist.angular.z = angle_diff * 1.5
+            if abs(angle_diff) < turn_stop_threshold: self.turning_in_place = False
+            
+        if self.turning_in_place:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.4 if angle_diff > 0 else -0.4
+        else:
+            # Engel Kontrolu (Basit)
+            safe = True
+            if self.lidar_ranges:
+                mid = len(self.lidar_ranges)//2
+                checks = self.lidar_ranges[mid-10:mid+10]
+                valid = [r for r in checks if 0.1<r<10]
+                if valid and min(valid) < 0.35: safe = False
+            
+            if safe:
+                speed = 0.35 if dist > 1.0 else 0.2
+                if dist < 0.5: speed = 0.1
+                twist.linear.x = speed
+            else: twist.linear.x = 0.0
+            
+            ang_spd = max(min(angle_diff * 0.5, 0.5), -0.5)
+            twist.angular.z = ang_spd
             
         return False, twist
 
@@ -217,9 +257,7 @@ class PatrolNode(Node):
             if not self.has_global_goal:
                 self.state = "IDLE"
                 return
-            
-            arrived, twist = self.navigate_to(self.global_goal_x, self.global_goal_y, self.global_goal_theta, tolerance=0.8)
-            
+            arrived, twist = self._navigate_impl(self.global_goal_x, self.global_goal_y, None, 0.5)
             if arrived:
                 self.get_logger().info("🏁 Global hedefe yaklaşıldı. Tarama yapılıyor...")
                 self.stop_robot()
@@ -229,79 +267,110 @@ class PatrolNode(Node):
                 self.cmd_pub.publish(twist)
                 
         elif self.state == "SCANNING":
-            # 1. Vizyon kilitlendiyse devam et
             if self.target_locked:
                 self.state = "NAVIGATE_TO_DOCK"
                 return
-            
-            # 2. Oryantasyon Hizalamasi
-            # Robot hedefe vardi ama dogru yere bakiyor mu?
-            # Planner bize 'global_goal_theta' gondermisti (Pano karsisindaki durus acisi)
             
             angle_diff = self.global_goal_theta - self.robot_yaw
             while angle_diff > math.pi: angle_diff -= 2*math.pi
             while angle_diff < -math.pi: angle_diff += 2*math.pi
             
             twist = Twist()
-            
-            # Hizalanma toleransi (0.05 rad ~= 3 derece)
-            if abs(angle_diff) > 0.05:
-                # Donmeye devam et
+            if abs(angle_diff) > 0.1:
                 twist.angular.z = 0.5 if angle_diff > 0 else -0.5
                 self.cmd_pub.publish(twist)
-                # Henuz tarama suresini baslatma, once donelim
                 self.scan_start_time = time.time()
-                
             else:
-                # 3. Hizalandik, simdi bekle ve bak
                 self.stop_robot()
-                
-                # Kac saniyedir bakiyoruz?
-                elapsed = time.time() - self.scan_start_time
-                
-                if elapsed > 3.0:
-                    # 3 saniye baktik, hala vizyon yoksa pes et
-                    if not self.target_locked:
-                        self.get_logger().warn("⚠️ Hedefe bakildi (3sn) ama pano gorulmedi. Planner'ın sonraki hedefe geçmesi için IDLE olunuyor.")
+                if (time.time() - self.scan_start_time) > 3.0:
+                     if not self.target_locked:
+                        self.get_logger().warn("⚠️ Pano gorulmedi. IDLE.")
                         self.state = "IDLE"
-                else:
-                    pass # Beklemeye devam (Vizyon calisiyor)
-
+        
         elif self.state == "NAVIGATE_TO_DOCK":
-            arrived, twist = self.navigate_to(self.dock_x, self.dock_y, tolerance=0.10)
-            
-            # Docking icin daha hassas ve yavas olalim
-            twist.linear.x = min(0.2, twist.linear.x) 
-            
-            if arrived:
-                self.stop_robot()
-                self.state = "ALIGN_TO_POSTER"
-                self.get_logger().info("🏁 Dock Noktasına Varıldı.")
-            else:
-                self.cmd_pub.publish(twist)
-
-        elif self.state == "ALIGN_TO_POSTER":
-            # Postere Dön (Zaten navigasyon fonksiyonu mantigi ama sadece donus)
-            dx = self.poster_x - self.robot_x
-            dy = self.poster_y - self.robot_y
-            target_angle = math.atan2(dy, dx)
-            angle_diff = target_angle - self.robot_yaw
-            while angle_diff > math.pi: angle_diff -= 2*math.pi
-            while angle_diff < -math.pi: angle_diff += 2*math.pi
+            # --- VISUAL SERVOING CONTROLLER ---
+            # Gorsel verilere gore hareket et
+            # Hedef: 
+            # 1. cx_offset -> 0 (Ortala)
+            # 2. poster_width -> Hedef Genislik (Yakinlas) veya Distance -> 0.8m
             
             twist = Twist()
-            if abs(angle_diff) < 0.02:
+            
+            # Guvenlik saati: Eger cok uzun sure kilitli kalirsa (kilitlenirse)
+            # Simdilik es gecelim, basite odaklanalim
+            
+            # Veri var mi?
+            if not hasattr(self, 'visual_cx_offset'):
+                self.stop_robot()
+                return
+
+            # 1. AÇISAL KONTROL (P-Controller)
+            K_ang = 0.8 
+            err_ang = self.visual_cx_offset
+            ang_z = -K_ang * err_ang
+            ang_z = max(min(ang_z, 0.4), -0.4)
+            if abs(err_ang) < 0.05: ang_z = 0.0
+
+            # 2. DOĞRUSAL KONTROL (Pano Genisligi Bazli - Frame Icinde Tutma)
+            # Hedef: Pano genisligi ekrani kaplamasin (Kenarlar gorunsun)
+            # 640px genislik var. Hedefimiz 450px olsun (~%70 doluluk)
+            target_width = 450.0 
+            current_width = 0.0
+            
+            if hasattr(self, 'visual_poster_width') and self.visual_poster_width > 10:
+                current_width = self.visual_poster_width
+            
+            # Eger width verisi yoksa veya cok kucukse (algilama bozuksa), ArUco mesafesine guvenelim
+            dist_control_active = False
+            
+            if current_width > 10:
+                err_width = target_width - current_width
+                # Eger width < target -> Yaklas (Pozitif err)
+                # Eger width > target -> Uzaklas (Negatif err)
+                
+                K_lin = 0.0015 # Pixel hatasini hiza cevir
+                lin_x = K_lin * err_width
+                
+                # Cok yaklastiysak (Width > 550) sert dur/geri git
+                if current_width > 550:
+                    lin_x = -0.1
+            else:
+                # Fallback: ArUco Dist
+                distance_to_target = 99.0
+                if hasattr(self, 'latest_visual_dist'): distance_to_target = self.latest_visual_dist
+                elif self.lidar_ranges: 
+                    mid = len(self.lidar_ranges)//2
+                    valid = [r for r in self.lidar_ranges[mid-5:mid+5] if 0.1<r<5.0]
+                    if valid: distance_to_target = min(valid)
+                
+                # Hedef mesafe 1.2m (Daha guvenli, cerceve sigsin)
+                lin_x = 0.2 * (distance_to_target - 1.2)
+                self.get_logger().info(f"VS FALLBACK: Dist={distance_to_target:.2f}")
+
+            # Hiz limitleri (Yavas yaklasim)
+            lin_x = max(min(lin_x, 0.25), -0.1) 
+            
+            # KOMBINASYON
+            twist.angular.z = float(ang_z)
+            twist.linear.x = float(lin_x)
+            
+            self.get_logger().info(f"VS: Off={err_ang:.2f} Width={current_width:.0f} LinX={lin_x:.2f}")
+            
+            # BITIS KOSULU: Pixeller hedefteyse ve ortaladiysak
+            # Width hatasi < 20px ve Angle hatasi < 0.05
+            is_aligned_visual = (current_width > 10 and abs(lin_x) < 0.02 and abs(err_ang) < 0.05 and current_width > 400)
+            is_aligned_dist = (current_width <= 10 and abs(lin_x) < 0.02 and abs(err_ang) < 0.1)
+            
+            if is_aligned_visual or is_aligned_dist:
+                self.get_logger().info("🎯 Visual Docking Başarılı. Analiz Başlıyor...")
                 self.stop_robot()
                 self.state = "ANALYZING"
-                self.get_logger().info("📸 Analiz Başlıyor...")
                 time.sleep(1.0)
                 self.client.call_async(Trigger.Request())
             else:
-                twist.angular.z = 0.3 if angle_diff > 0 else -0.3
                 self.cmd_pub.publish(twist)
-                
+
         elif self.state == "ANALYZING":
-            # Callback (analysis_done_callback) gelene kadar bekle
             pass 
 
 def main(args=None):

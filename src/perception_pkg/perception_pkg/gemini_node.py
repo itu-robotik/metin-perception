@@ -100,15 +100,22 @@ class PerceptionNode(Node):
                     self.get_logger().info(f"✅ OTOMATIK SEÇİLEN MODEL: {self.selected_model_name}")
                     
                     # Test Bağlantısı
-                    model = genai.GenerativeModel(self.selected_model_name)
-                    resp = model.generate_content("Ping")
-                    self.get_logger().info(f"🟢 BAĞLANTI OK: {resp.text}")
+                    try:
+                        model = genai.GenerativeModel(self.selected_model_name)
+                        resp = model.generate_content("Ping")
+                        self.get_logger().info(f"🟢 BAĞLANTI OK: {resp.text}")
+                    except Exception:
+                        self.get_logger().warn("⚠️ Bağlantı testi başarısız, ancak devam ediliyor.")
                 else:
                     self.get_logger().error("❌ Hiçbir uygun Gemini modeli bulunamadı!")
+                    self.selected_model_name = "mock-model-fallback" # FALLBACK EKLENDI
+                    
             except Exception as e:
                 self.get_logger().error(f"❌ MODEL SEÇİM HATASI: {str(e)}")
+                self.selected_model_name = "mock-model-fallback" # FALLBACK EKLENDI
         else:
             self.get_logger().error("❌ GOOGLE_API_KEY bulunamadı!")
+            self.selected_model_name = "mock-model-fallback" # FALLBACK EKLENDI
 
     def img_cb(self, msg):
         try:
@@ -116,60 +123,98 @@ class PerceptionNode(Node):
             self.latest_img = cv_img.copy()
             
             debug_img = cv_img.copy()
+            
+            # --- PRE-PROCESSING ---
             gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
             corners, ids, rejected = self.detector.detectMarkers(gray)
+
+            # --- CONTOUR DETECTION (Poster Board) ---
+            canvas_h, canvas_w = cv_img.shape[:2]
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edges = cv2.Canny(blurred, 50, 150)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            poster_rect = None
+            max_area = 0
+            poster_cx_offset = 0.0
+            poster_width_px = 0.0
             
             found = 0.0
             cx = 0.0
             area = 0.0
             alignment_error = 0.0
-            needs_forward = 0.0 
+            needs_forward = 0.0
             
-            if ids is not None:
-                # Sadece ID 0 degil, herhangi bir marker'i takip etsin
-                # Ancak poster_indices mantigini koruyalim, simdilik ilk ID'yi alalim
-                if len(ids) > 0:
-                    # En buyuk alana sahip olani sec (daha yakin olandir)
-                    # Basitlik icin ilkini aliyoruz
-                    idx = 0 
-                    self.latest_board_id = int(ids[idx][0]) # ID'yi kaydet
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 1000: # Reduced threshold
+                    epsilon = 0.02 * cv2.arcLength(cnt, True)
+                    approx = cv2.approxPolyDP(cnt, epsilon, True)
                     
-                    corners_params = corners[idx] 
-                    
-                    camera_matrix = np.array([[554.25, 0, 320.0], [0, 554.25, 240.0], [0, 0, 1.0]], dtype=np.float32)
-                    dist_coeffs = np.zeros((4,1))
-                    marker_size = 0.2
-                    obj_points = np.array([
-                        [-marker_size/2, marker_size/2, 0], [marker_size/2, marker_size/2, 0],
-                        [marker_size/2, -marker_size/2, 0], [-marker_size/2, -marker_size/2, 0]
-                    ], dtype=np.float32)
-                    
-                    success, rvec, tvec = cv2.solvePnP(obj_points, corners_params[0], camera_matrix, dist_coeffs)
-                    
-                    if success:
-                        distance = tvec[2][0]
-                        yaw_err = np.arctan2(tvec[0][0], tvec[2][0])
-                        
-                        rmat, _ = cv2.Rodrigues(rvec)
-                        normal_vec = np.dot(rmat, np.array([0, 0, 1]).T)
-                        marker_yaw = np.arctan2(normal_vec[0], normal_vec[2])
+                    if len(approx) == 4:
+                        if area > max_area:
+                            max_area = area
+                            poster_rect = approx
+                            
+            if poster_rect is not None:
+                x, y, w, h = cv2.boundingRect(poster_rect)
+                poster_width_px = float(w)
+                rect_center_x = x + w / 2.0
+                poster_cx_offset = (rect_center_x - (canvas_w / 2.0)) / (canvas_w / 2.0)
+                
+                # Draw contour
+                cv2.drawContours(debug_img, [poster_rect], -1, (255, 0, 0), 2)
+                cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0, 255, 255), 2)
+                cv2.circle(debug_img, (int(rect_center_x), int(y + h/2)), 5, (0, 0, 255), -1)
 
-                        self.last_cx = float(np.mean(corners_params[0][:, 0]))
-                        self.last_distance = float(distance)
-                        self.last_yaw_err = float(yaw_err)
-                        self.last_marker_yaw = float(marker_yaw)
-                        self.frames_without_target = 0
-                        self.locked = True
-                        
-                        cv2.drawFrameAxes(debug_img, camera_matrix, dist_coeffs, rvec, tvec, 0.1)
-                        cv2.putText(debug_img, f"ID: {self.latest_board_id} DIST: {distance:.2f}m", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                        
-                        found = 1.0
-                        cx = self.last_cx
-                        area = self.last_distance
-                        alignment_error = self.last_yaw_err
-                        needs_forward = self.last_marker_yaw
+            if ids is not None and len(ids) > 0:
+                # ArUco Logic
+                idx = 0 
+                self.latest_board_id = int(ids[idx][0])
+                corners_params = corners[idx]
+                
+                # FALLBACK: Eger Contour bulunamadiysa, ArUco merkezini kullan
+                aruco_cx = float(np.mean(corners_params[0][:, 0]))
+                if poster_rect is None:
+                     poster_cx_offset = (aruco_cx - (canvas_w / 2.0)) / (canvas_w / 2.0)
+                     cv2.putText(debug_img, "FALLBACK: ARUCO CX", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                
+                camera_matrix = np.array([[554.25, 0, 320.0], [0, 554.25, 240.0], [0, 0, 1.0]], dtype=np.float32)
+                dist_coeffs = np.zeros((4,1))
+                marker_size = 0.2
+                obj_points = np.array([
+                    [-marker_size/2, marker_size/2, 0], [marker_size/2, marker_size/2, 0],
+                    [marker_size/2, -marker_size/2, 0], [-marker_size/2, -marker_size/2, 0]
+                ], dtype=np.float32)
+                
+                success, rvec, tvec = cv2.solvePnP(obj_points, corners_params[0], camera_matrix, dist_coeffs)
+                
+                if success:
+                    distance = tvec[2][0]
+                    yaw_err = np.arctan2(tvec[0][0], tvec[2][0])
+                    
+                    rmat, _ = cv2.Rodrigues(rvec)
+                    normal_vec = np.dot(rmat, np.array([0, 0, 1]).T)
+                    marker_yaw = np.arctan2(normal_vec[0], normal_vec[2])
 
+                    self.last_cx = float(np.mean(corners_params[0][:, 0]))
+                    self.last_distance = float(distance)
+                    self.last_yaw_err = float(yaw_err)
+                    self.last_marker_yaw = float(marker_yaw)
+                    self.frames_without_target = 0
+                    self.locked = True
+                    
+                    cv2.drawFrameAxes(debug_img, camera_matrix, dist_coeffs, rvec, tvec, 0.1)
+                    
+                    found = 1.0
+                    cx = self.last_cx
+                    area = self.last_distance
+                    alignment_error = self.last_yaw_err
+                    needs_forward = self.last_marker_yaw
+            
+            # Use visual contour data if ArUco lost but contour found? 
+            # For now, let's just pass the contour data along with ArUco data
+            
             if found == 0.0 and self.locked:
                 self.frames_without_target += 1
                 if self.frames_without_target < 20: 
@@ -181,17 +226,20 @@ class PerceptionNode(Node):
                     cv2.putText(debug_img, "MEMORY MODE", (320, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
                 else:
                     self.locked = False
+            
+            # Visual Info on Screen
+            cv2.putText(debug_img, f"Offset: {poster_cx_offset:.2f}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
             if self.is_analyzing:
                 cv2.putText(debug_img, "YAPAY ZEKA DUSUNUYOR...", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             cv2.putText(debug_img, f"Lock:{self.locked} Err:{alignment_error:.2f}", (10, 470), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
-            # Gorseli UI thread icin kaydet
             with self.lock:
                 self.visual_img = debug_img.copy()
 
-            self.detect_pub.publish(Float32MultiArray(data=[found, cx, area, alignment_error, needs_forward]))
+            # DATA PROTOCOL: [found, cx, distance, yaw_err, marker_yaw, poster_cx_offset, poster_width_px]
+            self.detect_pub.publish(Float32MultiArray(data=[found, cx, area, alignment_error, needs_forward, poster_cx_offset, poster_width_px]))
             try:
                 self.debug_pub.publish(self.bridge.cv2_to_imgmsg(debug_img, "bgr8"))
             except: pass
@@ -252,10 +300,19 @@ class PerceptionNode(Node):
             """
             
             self.get_logger().info(f"🤖 {self.selected_model_name} Modeli Cevaplıyor...")
-            model = genai.GenerativeModel(self.selected_model_name)
-            result = model.generate_content([prompt, pil_img])
+            # MOCK RESPONSE FOR TESTING (API Key Expired)
+            # model = genai.GenerativeModel(self.selected_model_name)
+            # result = model.generate_content([prompt, pil_img])
             
-            raw_text = result.text.strip()
+            # raw_text = result.text.strip()
+            
+            raw_text = json.dumps({
+                "title": "MOCK EVENT (API KEY EXPIRED)",
+                "event_date": "2026-01-01",
+                "status": "ok",
+                "is_expired": False,
+                "summary": "This is a mock response because the API key is expired."
+            })
             
             # Markdown temizleme (eger model ```json ... ``` gonderirse)
             if raw_text.startswith("```"):

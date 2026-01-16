@@ -1,0 +1,190 @@
+{
+  "boards": {
+    "1": {
+      "id": 1,
+      "status": "ok",
+      "visit_count": 4,
+      "last_visit": 1768555637.4279222,
+      "last_attempt": 1768555610.2036905,
+      "title": "MOCK EVENT (API KEY EXPIRED)",
+      "event_date": "2026-01-01",
+      "is_expired": false
+    },
+    "2": {
+      "id": 2,
+      "status": "ok",
+      "visit_count": 3,
+      "last_visit": 1768555339.7900298,
+      "last_attempt": 1768555313.2391977,
+      "title": "MOCK EVENT (API KEY EXPIRED)",
+      "event_date": "2026-01-01",
+      "is_expired": false
+    },
+    "3": {
+      "id": 3,
+      "status": "ok",
+      "visit_count": 4,
+      "last_visit": 1768555719.2000704,
+      "last_attempt": 1768555640.2053225,
+      "title": "MOCK EVENT (API KEY EXPIRED)",
+      "event_date": "2026-01-01",
+      "is_expired": false
+    }
+  },
+  "history": [
+    {
+      "timestamp": 1768554770.0280256,
+      "board_id": "1",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554803.1134171,
+      "board_id": "2",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 34,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554837.0252788,
+      "board_id": "3",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 17,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554864.3375275,
+      "board_id": "1",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554898.4768045,
+      "board_id": "3",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554928.8199046,
+      "board_id": "2",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554956.7151067,
+      "board_id": "1",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768554983.3260353,
+      "board_id": "3",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 0,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768555339.7900333,
+      "board_id": "2",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 17,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768555637.4279244,
+      "board_id": "1",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 17,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    },
+    {
+      "timestamp": 1768555719.200072,
+      "board_id": "3",
+      "analysis": {
+        "title": "MOCK EVENT (API KEY EXPIRED)",
+        "event_date": "2026-01-01",
+        "status": "ok",
+        "is_expired": false,
+        "summary": "This is a mock response because the API key is expired.",
+        "board_id": 17,
+        "is_duplicate": false,
+        "gemini_raw_id": "generated-by-gemini"
+      }
+    }
+  ]
+}
