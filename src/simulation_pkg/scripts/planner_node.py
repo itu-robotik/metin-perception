@@ -107,35 +107,78 @@ class PlannerNode(Node):
     def planning_loop(self):
         # Eger robot mesgulse emir verme
         if self.robot_state != "IDLE":
-            # self.get_logger().info(f"⏳ Robot meşgul ({self.robot_state}), bekleniyor...")
             return
 
         target_id = None
+        min_dist = float('inf')
         
-        # Strateji 1: Sorunlu Panolar (Expired / Unclear) - Öncelikli
-        # Ama cok sık gitmemek icin son ziyaretten en az 60sn gecmeli
+        # Robotun su anki tahmini konumu (Hic gitmediyse 0,0 kabul edelim veya ilk panoya yakin)
+        # Daha once bir yere gittiysek ordayizdir
+        current_x = 0.0
+        current_y = 0.0
+        if self.current_target_id and self.current_target_id in self.board_locations:
+             last_loc = self.board_locations[self.current_target_id]
+             current_x = last_loc["x"]
+             current_y = last_loc["y"]
+        
         now = time.time()
         
-        for bid, info in self.memory["boards"].items():
-            if info["status"] in ["expired", "unclear", "unknown"]:
-                if (now - info["last_visit"]) > 60:
-                    target_id = bid
-                    self.get_logger().info(f"🚨 ÖNCELİK: Pano {bid} durumu '{info['status']}'. İncelenmeye gidiliyor.")
-                    break
+        # Gezilecek adaylari belirle
+        candidates = []
         
-        # Strateji 2: Round Robin (Sırayla Hepsini Gez)
+        for bid, info in self.memory["boards"].items():
+            # Ziyaret edilmemis veya status sorunlu olanlar
+            # Ayrica sure kontrolu (60sn)
+            should_visit = False
+            
+            if info["visit_count"] == 0:
+                # Hic gitmemisiz. Ama yakin zamanda denedik mi?
+                if (now - info.get("last_attempt", 0)) > 30: # 30 saniye bekleme suresi (basarisiz deneme sonrasi)
+                     should_visit = True
+            elif info["status"] in ["expired", "unclear", "unknown"]:
+                if (now - info["last_visit"]) > 60:
+                    should_visit = True
+            
+            if should_visit:
+                # Mesafeyi hesapla
+                if bid in self.board_locations:
+                    loc = self.board_locations[bid]
+                    dist = math.sqrt((loc["x"] - current_x)**2 + (loc["y"] - current_y)**2)
+                    candidates.append((dist, bid))
+        
+        # En yakini sec
+        if candidates:
+            # Mesafeye gore sirala (kucukten buyuge)
+            candidates.sort(key=lambda x: x[0])
+            target_id = candidates[0][1]
+            dist_to_target = candidates[0][0]
+            self.get_logger().info(f"📍 En Yakın Hedef Seçildi: Pano {target_id} (Mesafe: {dist_to_target:.2f}m)")
+        
+        # Eger aday yoksa, belki hepsi 'ok' durumdadir. 
+        # Yine de en eski ziyaret edilene bakalim (devriye niyetiyle)
         if target_id is None:
-            # En eski ziyaret edilene git
-            oldest_time = float('inf')
-            for bid, info in self.memory["boards"].items():
+             oldest_time = float('inf')
+             found_candidate = False
+             
+             for bid, info in self.memory["boards"].items():
+                # Devriye sirasinda da yakin zamanda denediklerimizi atlayalim
+                if (now - info.get("last_attempt", 0)) < 30:
+                    continue
+                
                 if info["last_visit"] < oldest_time:
                     oldest_time = info["last_visit"]
                     target_id = bid
-            
-            self.get_logger().info(f"🔄 DEVRİYE: Pano {target_id} en eski ziyaret. Oraya gidiliyor.")
+                    found_candidate = True
+             
+             if found_candidate:
+                self.get_logger().info(f"🔄 Devriye: Her şey yolunda, en eski Pano {target_id} kontrol ediliyor.")
 
         if target_id:
+            # Hedef gondermeden once last_attempt guncelle
+            self.memory["boards"][target_id]["last_attempt"] = time.time()
             self.send_goal(target_id)
+            # Hedefi set et ki bir sonraki sefer buradan hesaplayalim
+            self.current_target_id = target_id
 
     def send_goal(self, board_id):
         if board_id not in self.board_locations:

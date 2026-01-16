@@ -31,7 +31,7 @@
     <!-- PANO (Mavi Çerçeveli + Hizalı) -->
     <!-- PANO (ArUco Markerlı + Gri Çerçeve) -->
     <include>
-      <uri>model://poster_board</uri>
+      <uri>model://poster_board_1</uri>
       <name>noticeboard_1</name>
       <!-- Duvarin dibine: y=-2, poster kalinigi ~0.1, bu yuzden -1.9 -->
       <!-- Donuk: 1.57 (90 derece, sola bakiyor, yani -Y duvarindan +Y tarafina bakiyor) -->
@@ -39,17 +39,24 @@
     </include>
 
     <include>
-      <uri>model://poster_board</uri>
+      <uri>model://poster_board_2</uri>
       <name>noticeboard_2</name>
       <!-- Karsi duvar: y=2, donuk -1.57 (270 veya -90 derece, saga bakiyor) -->
       <pose>6 1.9 1.25 0 0 -1.57</pose>
     </include>
 
     <include>
-      <uri>model://poster_board</uri>
+      <uri>model://poster_board_3</uri>
       <name>noticeboard_3</name>
       <!-- Tekrar sol duvar: y=-2 -->
       <pose>9 -1.9 1.25 0 0 1.57</pose>
+    </include>
+
+    <include>
+      <uri>model://poster_board_1</uri>
+      <name>noticeboard_4</name>
+      <!-- Duplicate of board 1, placed between board 1 and 3 on the left wall -->
+      <pose>6 -1.9 1.25 0 0 1.57</pose>
     </include>
     
 

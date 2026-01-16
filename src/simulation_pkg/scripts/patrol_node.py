@@ -15,7 +15,7 @@ def euler_from_quaternion(x, y, z, w):
     t3 = +2.0 * (w * z + x * y)
     t4 = +1.0 - 2.0 * (y * y + z * z)
     return math.atan2(t3, t4)
-
+    
 class PatrolNode(Node):
     def __init__(self):
         super().__init__('patrol_node')
@@ -77,6 +77,11 @@ class PatrolNode(Node):
 
     def lidar_callback(self, msg): 
         self.lidar_ranges = msg.ranges
+        self.scan_info = {
+            'min': msg.angle_min,
+            'max': msg.angle_max,
+            'inc': msg.angle_increment
+        }
     
     def goal_callback(self, msg):
         self.global_goal_x = msg.pose.position.x
@@ -97,10 +102,11 @@ class PatrolNode(Node):
             return 
             
         # Hedef panoya yakin miyiz? (3m menzil)
-        if self.has_global_goal:
-            dist_to_goal = math.sqrt((self.global_goal_x - self.robot_x)**2 + (self.global_goal_y - self.robot_y)**2)
-            if dist_to_goal > 3.0: 
-                return # Henuz uzagiz, vizyonu dikkate alma
+        # IPTAL: Robot gordugu an kilitlensin, odometri hatasi yuzunden kacirmasin.
+        # if self.has_global_goal:
+        #     dist_to_goal = math.sqrt((self.global_goal_x - self.robot_x)**2 + (self.global_goal_y - self.robot_y)**2)
+        #     if dist_to_goal > 3.0: 
+        #         return # Henuz uzagiz, vizyonu dikkate alma
 
         if self.target_locked: return 
         
@@ -120,10 +126,10 @@ class PatrolNode(Node):
                     self.poster_x = px
                     self.poster_y = py
                     
-                    # DOCKING HESABI
-                    poster_normal_angle = global_angle_to_poster + math.pi + marker_yaw
-                    self.dock_x = px + (0.9 * math.cos(poster_normal_angle))
-                    self.dock_y = py + (0.9 * math.sin(poster_normal_angle))
+                    # DOCKING HESABI - DÜZELTİLDİ
+                    poster_normal_angle = self.robot_yaw - marker_yaw
+                    self.dock_x = px + (0.75 * math.cos(poster_normal_angle))
+                    self.dock_y = py + (0.75 * math.sin(poster_normal_angle))
                     
                     self.target_locked = True
                     self.state = "NAVIGATE_TO_DOCK" # Hemen dockinga gec
@@ -154,7 +160,49 @@ class PatrolNode(Node):
             twist.linear.x = 0.0
             twist.angular.z = 0.6 if angle_diff > 0 else -0.6
         else:
-            twist.linear.x = 0.4
+            # Engel Kontrolu (Lidar)
+            safe_to_move = True
+            if hasattr(self, 'scan_info') and self.lidar_ranges:
+                rel_angle = angle_diff 
+                scan_min = self.scan_info['min']
+                scan_inc = self.scan_info['inc']
+                
+                # Indexi bul
+                center_idx = int((rel_angle - scan_min) / scan_inc)
+                num_readings = len(self.lidar_ranges)
+                
+                # 20 derecelik yarim koni (toplam 40 derece)
+                margin_steps = int(math.radians(20) / scan_inc)
+                
+                min_obs_dist = 10.0
+                
+                # Koni icindeki degerleri kontrol et
+                # Modulo kullanarak array sonundan basina gecisleri yonet
+                indices_to_check = []
+                for i in range(center_idx - margin_steps, center_idx + margin_steps + 1):
+                    indices_to_check.append(i % num_readings)
+                    
+                valid_readings = []
+                for idx in indices_to_check:
+                    r = self.lidar_ranges[idx]
+                    # 0.2m'den yakinlari (robot kendisi/gurultu) ve cok uzaklari (inf) ele
+                    # Ayrica 0.0 degeri de gecersizdir
+                    if r > 0.2 and r < 10.0:
+                        valid_readings.append(r)
+                
+                if valid_readings:
+                    min_obs_dist = min(valid_readings)
+                
+                # Eger en yakin engel 0.45m'den yakinsa dur (Robotun onu)
+                if min_obs_dist < 0.45:
+                    safe_to_move = False
+                    self.get_logger().warn(f"� Engel: {min_obs_dist:.2f}m. Duruluyor.", throttle_duration_sec=1.0)
+
+            if safe_to_move:
+                twist.linear.x = 0.4
+            else:
+                twist.linear.x = 0.0
+                
             twist.angular.z = angle_diff * 1.5
             
         return False, twist
@@ -181,25 +229,43 @@ class PatrolNode(Node):
                 self.cmd_pub.publish(twist)
                 
         elif self.state == "SCANNING":
-            # Hedefe geldik ama vizyon locklanmadiysa, biraz donup bakalim
+            # 1. Vizyon kilitlendiyse devam et
             if self.target_locked:
                 self.state = "NAVIGATE_TO_DOCK"
                 return
-                
-            elapsed = time.time() - self.scan_start_time
+            
+            # 2. Oryantasyon Hizalamasi
+            # Robot hedefe vardi ama dogru yere bakiyor mu?
+            # Planner bize 'global_goal_theta' gondermisti (Pano karsisindaki durus acisi)
+            
+            angle_diff = self.global_goal_theta - self.robot_yaw
+            while angle_diff > math.pi: angle_diff -= 2*math.pi
+            while angle_diff < -math.pi: angle_diff += 2*math.pi
+            
             twist = Twist()
             
-            if elapsed < 2.0: # Sağa dön
-                twist.angular.z = 0.4
-            elif elapsed < 6.0: # Sola dön
-                twist.angular.z = -0.4
+            # Hizalanma toleransi (0.05 rad ~= 3 derece)
+            if abs(angle_diff) > 0.05:
+                # Donmeye devam et
+                twist.angular.z = 0.5 if angle_diff > 0 else -0.5
+                self.cmd_pub.publish(twist)
+                # Henuz tarama suresini baslatma, once donelim
+                self.scan_start_time = time.time()
+                
             else:
-                # Bulamazsak da yapacak bir sey yok, IDLE olup yeni emir bekle
-                self.state = "IDLE" 
+                # 3. Hizalandik, simdi bekle ve bak
                 self.stop_robot()
-                self.get_logger().warn("⚠️ Pano bulunamadı veya kilitlenilemedi.")
-            
-            self.cmd_pub.publish(twist)
+                
+                # Kac saniyedir bakiyoruz?
+                elapsed = time.time() - self.scan_start_time
+                
+                if elapsed > 3.0:
+                    # 3 saniye baktik, hala vizyon yoksa pes et
+                    if not self.target_locked:
+                        self.get_logger().warn("⚠️ Hedefe bakildi (3sn) ama pano gorulmedi. Planner'ın sonraki hedefe geçmesi için IDLE olunuyor.")
+                        self.state = "IDLE"
+                else:
+                    pass # Beklemeye devam (Vizyon calisiyor)
 
         elif self.state == "NAVIGATE_TO_DOCK":
             arrived, twist = self.navigate_to(self.dock_x, self.dock_y, tolerance=0.10)

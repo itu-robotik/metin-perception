@@ -1,0 +1,163 @@
+ITU Noticeboard Patrol: Autonomous Observation
+and Anomaly Detection
+YZV406E Robotics — Project Proposal (Fall 2025)
+Team
+• Emre Saraç (150210027)
+• Abdullah Saatçi (150210020)
+• Metin Ertekin Küçük (150210061)
+
+Project Topic
+Design and simulate a mobile robot that patrols university corridors, approaches noticeboards, captures high-resolution poster images, and performs information extraction
+and analysis to detect expired or outdated announcements and generate structured reports.
+
+Problem Definition & Motivation
+Highly used buildings (e.g., Architecture, EEF) contain many noticeboards whose content changes
+frequently. Manually checking for expired or duplicate announcements is tedious. We propose an
+autonomous system that safely navigates crowded corridors, aligns to boards, reads posters, flags
+anomalies (e.g., past-due dates), and logs results for facility staff.
+
+Environment & Platform
+• Simulation: Gazebo Harmonic indoor corridor with multiple noticeboards, benches, moving
+pedestrians.
+• Robot platform: TurtleBot-class differential drive robot equipped with a 2D LiDAR for
+mapping and obstacle avoidance, and an RGB or RGB-D camera for board detection and
+image capture. ROS2 Humble will be used.
+
+High-Level Requirements
+1. Safe Navigation & Approach: Build or obtain a 2D map, localize, avoid pedestrians, and
+dock to a board viewing pose.
+2. Perception & Information Processing: Identify and localize noticeboards, capture images,
+and process visual data to extract relevant content such as titles, dates, and general summaries.
+Detect potential anomalies including outdated or duplicated announcements. Methods may
+involve image-based detection, fiducial markers or external services.
+3. Data Logging: Record board IDs, timestamps, captured images, extracted fields, and anomaly
+flags for reporting and traceability.
+4. Testing & Metrics: Evaluate success rate, navigation safety, approach accuracy, perception robustness, and information analysis precision/recall, including demonstration through
+recorded video presentations.
+
+1
+
+Method & Approach
+Perception (Boards and Posters)
+• Board and poster observation: The robot identifies noticeboards, aligns its view, and
+captures high-quality images ensuring sufficient framing, resolution, and lighting.
+• Information extraction and analysis: Captured visual data is processed or transmitted to
+obtain relevant content such as titles, dates, or summaries. Potentially outdated or duplicated
+announcements are flagged. The method may involve onboard processing or external services.
+• Optional refinement: When confidence in extracted information is low, secondary reasoning
+or external interpretation modules may be applied to improve accuracy.
+
+Localization and Mapping
+• The robot constructs an internal map of the environment, identifying corridors and board
+positions.
+• During operation, it continuously updates its own position on this map, allowing it to navigate
+accurately and approach each board safely.
+
+Planning and Control
+• The robot plans efficient and safe routes between all target boards, considering environmental
+constraints such as corridor width and pedestrian movement.
+• Motion control adjusts velocity and direction dynamically to avoid collisions and maintain
+smooth navigation.
+• Upon reaching a board, the robot stops at a suitable viewing distance and adjusts its orientation to face the board frontally.
+• The full behavior sequence follows a structured routine: navigate to board → align view →
+capture image → extract and analyze text → log findings → proceed to next board.
+
+2
+
+Individual Responsibilities (Distinct Robotic Subtasks)
+Member
+
+Primary Task
+
+Sample Subtasks and Duties
+
+Metin Ertekin
+Küçük
+
+Perception
+
+Detection and localization of
+noticeboards; capturing and
+processing poster images to extract
+relevant information; identifying
+expired or duplicated
+announcements. Video duties.
+
+Abdullah Saatçi
+
+Navigation and Control
+
+Developing safe movement
+strategies in indoor corridors;
+avoiding dynamic obstacles such as
+pedestrians; designing and testing
+smooth approach behavior to stop
+at appropriate viewing distance
+from boards. Presentation duties.
+
+Emre Saraç
+
+High-Level Planning and
+Testing
+
+Defining overall patrol routes and
+visit sequences; coordinating
+perception and motion behaviors;
+running integrated system tests and
+analyzing performance across
+different crowd and lighting
+conditions.
+
+Timeline (Dates reflect course call)
+Milestone
+
+Target Dates
+
+Details
+
+Project start
+
+5–11 Nov 2025
+
+Proposal submission
+Mapping and movement baseline
+Perception
+prototype
+Integrated
+patrol
+behavior
+Testing and tuning
+
+12 Nov 2025
+
+Repository setup, simulation environment
+preparation, base robot configuration.
+Finalize topic, goals, and team task distribution.
+
+Polish and documentation
+Final demonstration
+
+11–17 Dec 2025
+
+13–19 Nov 2025
+20–26 Nov 2025
+27 Nov–3 Dec 2025
+4–10 Dec 2025
+
+18–29 Dec 2025
+
+Establish initial map of corridors and test basic
+navigation routes.
+Implement board detection and image capture on
+simulated noticeboards.
+Combine perception and motion behaviors into a
+complete patrol cycle.
+Evaluate navigation safety and perception
+performance under varying crowd density.
+Final adjustments, report writing, and demo
+preparation.
+Conduct full scenario run and present results.
+
+3
+
+

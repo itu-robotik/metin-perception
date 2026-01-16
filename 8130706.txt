@@ -1,0 +1,178 @@
+ITU Noticeboard Patrol: Autonomous Observation
+and Anomaly Detection
+YZV406E Robotics - Project Proposal (Fall 2025)
+Team Members:
+Emre Saraç (150210027)
+Abdullah Saatçi (150210020)
+Metin Ertekin Küçük (150210061)
+November 29, 2025
+
+1
+
+Project Topic
+
+Design and simulate a mobile robot that patrols university corridors, approaches noticeboards,
+captures high-resolution poster images, and performs intelligent information extraction. The
+system utilizes Cloud-based Vision Language Models (VLM) to detect expired, outdated, or
+duplicated announcements and generates structured reports using a persistent memory system.
+
+2
+
+Problem Definition & Motivation
+
+Highly used buildings (e.g., Architecture, EEF) contain many noticeboards whose content
+changes frequently. Manually checking for expired or duplicate announcements is tedious. We
+propose an autonomous system that safely navigates crowded corridors, aligns to boards, and
+leverages the Google Gemini API to analyze poster content. This approach solves the problem
+of detecting complex anomalies (e.g., past-due dates, duplicate flyers) while optimizing onboard
+computational resources.
+
+3
+
+Environment & Platform
+• Simulation: Gazebo Harmonic indoor corridor environment populated with multiple noticeboards, benches, and dynamic obstacles (moving pedestrians). Real-world poster
+images will be used as textures for realistic validation.
+• Robot Platform: TurtleBot-class differential drive robot equipped with a 2D LIDAR for
+mapping and an RGB camera for board detection.
+• Software Stack: ROS2 Humble.
+• Computational Strategy: To manage limited VRAM, heavy visual reasoning is offloaded to the Cloud (Gemini API), simulating a modern edge-cloud architecture.
+
+4
+
+High-Level Requirements
+1. Safe Navigation & Approach: Build a 2D map, localize, avoid static (benches) and
+dynamic (pedestrians) obstacles, and perform fine-grained docking to a board viewing
+pose.
+1
+
+2. Perception & Cloud Integration: Identify noticeboards and transmit images to the
+Google Gemini API. The system must extract relevant content (Titles, Dates, Summaries)
+and detect anomalies such as expired dates or duplicated posts.
+3. Memory & Data Logging: Maintain a database recording Board IDs, timestamps,
+captured images, extracted fields, and anomaly flags for reporting and traceability.
+4. Revisiting Logic (Planning): A high-level planner that schedules visits to boards previously flagged as ”Expired” or ”Unclear” to verify their status.
+5. Testing & Metrics: Evaluate navigation safety, approach accuracy, and information
+analysis precision/recall (demonstrated via video).
+
+2
+
+5
+
+Method & Approach
+
+5.1
+
+Perception (Cloud-Based Information Extraction)
+
+• Observation Capture: The robot identifies noticeboards using onboard detection, aligns
+its view to ensure sufficient framing and resolution, and captures the image.
+• VLM Analysis (Gemini API): Instead of error-prone local OCR, the captured image
+is sent to the Gemini API. The prompt requests a structured JSON output: { "title":
+string, "event date": date, "is expired": boolean, "is duplicate": boolean
+}.
+• Advantage: This hybrid method allows for understanding context (e.g., ”Next Monday”)
+and detecting duplicates by comparing semantic summaries in the cloud.
+
+5.2
+
+Localization, Navigation, and Control
+
+• Mapping Localization: The robot constructs an internal map of corridors and updates
+its position continuously to navigate accurately among benches and pedestrians.
+• Fine Positioning: Upon reaching a target, the robot switches to a visual servoing behavior to stop at a suitable viewing distance (approx. 50cm) and face the board frontally.
+
+5.3
+
+Memory System and High-Level Planning
+
+• Structured Routine: The full behavior follows the sequence:
+N avigate → AlignV iew → Capture&Analyze(Cloud) → LogtoM emory → Decide(N ext/Revisit)
+• Memory Structure: A persistent store records the state of each board (e.g., Board ID:
+3, Status: Expired, Last Seen: 14:00 ).
+• Revisiting Logic: If the API flags an item as expired, the planner marks it for a ”Reinspection” tour to confirm if facility staff have removed it.
+
+6
+
+Individual Responsibilities
+
+Member
+Metin Ertekin Küçük
+
+Primary Task
+Perception & Cloud API
+
+Abdullah Saatçi
+
+Navigation
+
+Emre Saraç
+
+Planning & Memory
+
+3
+
+Sample Subtasks
+Implementing Board Detection;
+Integrating Google Gemini API
+for extraction (Title, Date, Duplicates); JSON parsing; Video
+duties.
+Developing
+safe
+avoidance
+(Pedestrians/Benches);
+implementing fine-positioning/docking
+behavior; Presentation duties.
+Designing the Memory System
+(Logging IDs, timestamps); implementing the revisiting logic;
+coordinating system integration.
+
+7
+
+Timeline
+
+Milestone
+Project Start & Setup
+
+Dates
+5-12 Nov 2025
+
+Mapping & Navigation
+
+13-19 Nov 2025
+
+Perception Integration
+
+20-26 Nov 2025
+
+Memory & Logic
+
+27 Nov - 3 Dec 2025
+
+Testing
+
+4-10 Dec 2025
+
+Polish & Docs
+
+11-17 Dec 2025
+
+Final Demo
+
+18-29 Dec 2025
+
+4
+
+Details
+Repository setup, Gazebo environment with
+benches and real posters.
+Map creation; Basic navigation; Initial implementation of docking.
+Board detection; Gemini API connectivity
+tests; Prompt engineering.
+Connecting API outputs to Memory; Implementing re-inspection logic.
+Full system loop test: Explore → API Call
+→ Memorize → Revisit.
+Final adjustments, report writing, demo
+preparation.
+Full scenario presentation.
+
+
